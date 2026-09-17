@@ -1,0 +1,2193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SECOG Parcel Viewer</title>
+
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
+<script src="https://js.arcgis.com/4.30/"></script>
+
+<style>
+  :root {
+    --ink: #1b2027;
+    --ink-soft: #4a5361;
+    --line: #d7dce2;
+    --panel: #ffffff;
+    --accent: #2f5d50;
+    --accent-soft: #e7efec;
+    --bg: #eef1f3;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  #appRoot {
+    position: relative;
+    height: 100%;
+  }
+  #leftPanel, #rightPanel {
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    z-index: 900;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    border-radius: 10px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.20);
+    transition: width 0.18s ease;
+  }
+  #leftPanel { left: 12px; width: 280px; }
+  #rightPanel { right: 12px; width: 250px; }
+  #leftPanel.collapsed, #rightPanel.collapsed { width: 56px; }
+  #rightPanel { overflow-y: auto; }
+  #leftPanel { overflow: hidden; } /* each tab-pane manages its own scrolling below */
+  #leftPanel.collapsed, #rightPanel.collapsed {
+    overflow: hidden;
+  }
+  #leftPanel.collapsed .panel-header-text,
+  #rightPanel.collapsed .panel-header-text,
+  #leftPanel.collapsed .tab-bar,
+  #rightPanel.collapsed .tab-bar,
+  #leftPanel.collapsed .tab-pane,
+  #rightPanel.collapsed .tab-pane {
+    display: none;
+  }
+  #leftPanel.collapsed .panel-header-bar,
+  #rightPanel.collapsed .panel-header-bar {
+    justify-content: center;
+    border-bottom: none;
+  }
+  .panel-header-bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 18px 16px 14px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .panel-header-with-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mini-logo {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 6px;
+    letter-spacing: 0.3px;
+  }
+  .panel-header-text h1 {
+    font-size: 17px;
+    margin: 0 0 2px;
+    letter-spacing: 0.2px;
+  }
+  .panel-header-text p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .panel-toggle-btn {
+    width: auto;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 5px 9px;
+    font-size: 13px;
+    margin: 0;
+  }
+  .panel-toggle-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .tool-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tool-section h2 {
+    font-size: 12.5px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--ink);
+  }
+  .tool-section p.hint {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+    line-height: 1.5;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+  input[type="number"], input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  button {
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  button:hover { background: #244a40; }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  button.secondary:hover { background: var(--accent-soft); }
+  button.toggle.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-row button, .btn-row input { margin-bottom: 8px; min-width: 0; flex: 1; }
+
+  /* Tab bars (used by both left and right panels) */
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab-bar button {
+    flex: 1;
+    margin: 0;
+    border-radius: 0;
+    background: var(--panel);
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 12px 6px;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-bar button:hover { background: var(--accent-soft); }
+  .tab-bar button.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+  .tab-pane { display: none; flex: 1; min-height: 0; }
+  .tab-pane.active { display: block; overflow-y: auto; }
+
+  /* Results tab: 50/50 split between the results list and the parcel details panel below it,
+     each scrolling independently rather than the whole left panel scrolling as one block. */
+  #tabPaneResults.active {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .results-half, .details-half {
+    flex: 1 1 50%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .details-half { border-top: 2px solid var(--line); }
+  .results-half .tool-section, .details-half .tool-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .details-tab-bar { margin-bottom: 8px; }
+  .details-tab-bar button {
+    font-size: 11.5px;
+    padding: 8px 4px;
+  }
+  #parcelDetailsContent { display: none; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+  #parcelDetailsContent.open { display: flex; }
+  .details-pane-content { flex: 1; min-height: 0; overflow-y: auto; }
+  .details-pane { display: none; font-size: 12.5px; }
+  .details-pane.active { display: block; }
+  .details-pane table { border-collapse: collapse; width: 100%; }
+  .details-pane td { padding: 4px 6px 4px 0; vertical-align: top; }
+  .details-pane td.label { color: var(--ink-soft); white-space: nowrap; width: 45%; }
+  .details-pane .loading, .details-pane .none {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    font-style: italic;
+  }
+  .details-pane .section-title {
+    font-weight: 600;
+    margin: 10px 0 4px;
+    font-size: 12.5px;
+  }
+  .details-pane a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .details-pane a:hover { text-decoration: underline; }
+
+  #resultsList {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    font-size: 12.5px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+  #resultsList .row {
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  #resultsList .row:last-child { border-bottom: none; }
+  #resultsList .row:hover { background: var(--accent-soft); }
+  #resultsList .row .apn { font-weight: 600; }
+  #resultsList .row .owner { color: var(--ink-soft); }
+  #resultsLabel {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+    margin-bottom: 6px;
+  }
+
+  /* Custom "Add Data" layer list (right panel) */
+  #layerList {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+  #layerList .layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  #layerList .layer-row:last-child { border-bottom: none; }
+  #layerList .layer-row .layer-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #layerList .layer-row button.remove {
+    width: auto;
+    background: transparent;
+    color: #b23b3b;
+    border: none;
+    padding: 2px 6px;
+    font-size: 12px;
+    margin-bottom: 0;
+  }
+  #layerList .layer-row button.remove:hover { background: #fbe9e9; }
+  #layerList .layer-row input[type="checkbox"] { margin: 0; }
+
+  /* Preset overlay layers (left panel "Layers" tab: State / FEMA) */
+  details.layer-group { margin-bottom: 4px; }
+  details.layer-group summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12.5px;
+    padding: 8px 0;
+    color: var(--ink);
+    list-style: revert;
+  }
+  .preset-row {
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .preset-row:last-child { border-bottom: none; }
+  .preset-row .row-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .preset-row .row-top .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preset-row .row-top input[type="checkbox"] { margin: 0; }
+  .preset-row button.reorder {
+    width: auto;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    padding: 2px 6px;
+    font-size: 11px;
+    margin-bottom: 0;
+    border-radius: 3px;
+  }
+  .preset-row button.reorder:hover { background: var(--accent-soft); }
+  .preset-row input[type="range"] {
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  /* Compact toggles for Legend / Bookmarks (right panel) */
+  .mini-toggle-panel { display: none; margin-top: 8px; }
+  .mini-toggle-panel.open { display: block; }
+
+  #mapCell { position: absolute; inset: 0; }
+  #viewDiv { position: absolute; inset: 0; }
+
+  /* Floating top-left toolbar: search + selection tools */
+  #mapToolbar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    width: 270px;
+    background: var(--panel);
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    padding: 12px 14px;
+    font-size: 13px;
+    pointer-events: auto;
+  }
+  #mapToolbar.collapsed {
+    width: auto;
+  }
+  #mapToolbar.collapsed #mapToolbarBody {
+    display: none;
+  }
+  .map-toolbar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  #mapToolbar h3 {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--ink-soft);
+    margin: 10px 0 6px;
+  }
+  #mapToolbar h3:first-child { margin-top: 0; }
+  #mapToolbar hr {
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 10px 0;
+  }
+  #selectedParcelLabel {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+
+  .status {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 6px;
+    min-height: 14px;
+  }
+
+  /* Popup CAMA panel */
+  .cama-popup table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12.5px;
+  }
+  .cama-popup td {
+    padding: 3px 6px 3px 0;
+    vertical-align: top;
+  }
+  .cama-popup td.label {
+    color: var(--ink-soft);
+    white-space: nowrap;
+    width: 40%;
+  }
+  .cama-popup .section-title {
+    font-weight: 600;
+    margin: 10px 0 4px;
+    font-size: 12.5px;
+  }
+  .cama-popup .loading, .cama-popup .none {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    font-style: italic;
+  }
+
+  /* Print layout template - hidden except during export */
+  #printSheet { display: none; }
+  @media print {
+    #appRoot { display: none !important; }
+    #printSheet { display: block !important; }
+  }
+  #printSheet {
+    width: 1000px;
+    margin: 0 auto;
+    padding: 30px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  #printSheet .print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+  }
+  #printSheet .print-header h1 { font-size: 20px; margin: 0; }
+  #printSheet .print-header .meta { font-size: 12px; color: var(--ink-soft); text-align: right; }
+  #printSheet .print-map-wrap { position: relative; }
+  #printSheet img { width: 100%; border: 1px solid var(--line); display: block; }
+  #printSheet .north-arrow {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255,255,255,0.9);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  #printSheet .print-details {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  #printSheet .print-details .layers-shown { flex: 1; }
+  #printSheet .print-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 10px;
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+  /* Splash screen */
+  #splashScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: linear-gradient(135deg, var(--accent) 0%, #16281f 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .splash-card {
+    background: var(--panel);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    max-width: 460px;
+    width: 100%;
+    padding: 32px 28px;
+    text-align: center;
+  }
+  .splash-logo {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+  }
+  .splash-card h1 {
+    font-size: 19px;
+    margin: 0 0 16px;
+    color: var(--ink);
+  }
+  .splash-disclaimer {
+    text-align: left;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    background: var(--bg);
+  }
+  .splash-disclaimer p:first-child { margin-top: 0; }
+  .splash-disclaimer p:last-child { margin-bottom: 0; }
+  #splashProceedBtn {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Splash screen: shown on load, dismissed by the Proceed button below. The logo is a
+     simple placeholder badge — swap the .splash-logo div for an <img src="..."> pointing
+     at SECOG's real logo file (or a data: URI) whenever one is available. -->
+<div id="splashScreen">
+  <div class="splash-card">
+    <div class="splash-logo">SECOG</div>
+    <h1>SECOG Parcel Viewer</h1>
+    <div class="splash-disclaimer">
+      <p>The information contained in this application is provided by the Southeastern
+      Connecticut Council of Governments (SECOG) for general reference purposes only.</p>
+      <p>SECOG and its member municipalities make no warranties, express or implied,
+      concerning the accuracy, completeness, reliability, or suitability of this data for
+      any particular purpose. Parcel boundaries, ownership, and assessment information
+      shown here may not reflect the most current official records.</p>
+      <p>This application is not a substitute for a professional land survey, title
+      search, or official municipal land records, and should not be relied upon as a
+      legal description of any property. Users assume full responsibility for any use of
+      the information provided here.</p>
+    </div>
+    <button id="splashProceedBtn">Click here to proceed</button>
+  </div>
+</div>
+<script>
+  document.getElementById("splashProceedBtn").addEventListener("click", function () {
+    document.getElementById("splashScreen").style.display = "none";
+  });
+</script>
+
+<div id="appRoot">
+
+  <!-- LEFT PANEL: Filters / Results / Layers tabs -->
+  <div id="leftPanel">
+    <div class="panel-header-bar">
+      <div class="panel-header-text panel-header-with-logo">
+        <div class="mini-logo">SECOG</div>
+        <div>
+          <h1>SECOG Parcel Viewer</h1>
+          <p>Filter parcels, or select them on the map, to build a results list.</p>
+        </div>
+      </div>
+      <button id="leftPanelToggle" class="panel-toggle-btn" title="Minimize">◀</button>
+    </div>
+
+    <div class="tab-bar">
+      <button id="tabBtnFilters" class="active">Filters</button>
+      <button id="tabBtnResults">Results</button>
+      <button id="tabBtnLayers">Layers</button>
+    </div>
+
+    <div id="tabPaneFilters" class="tab-pane active">
+      <div class="tool-section">
+        <p class="hint">Narrow the visible parcels by any combination of fields below. Leave a field blank to ignore it.</p>
+        <label for="filterTown">Town</label>
+        <input id="filterTown" type="text" placeholder="e.g. Norwich" />
+        <label for="filterStreet">Street name contains</label>
+        <input id="filterStreet" type="text" placeholder="e.g. Main St" />
+        <label for="filterOwner">Owner contains</label>
+        <input id="filterOwner" type="text" placeholder="e.g. Smith" />
+        <label for="filterZone">Zoning contains</label>
+        <input id="filterZone" type="text" placeholder="e.g. R-40" />
+        <label for="filterNeighborhood">Neighborhood contains</label>
+        <input id="filterNeighborhood" type="text" placeholder="e.g. Downtown" />
+        <label for="filterPropertyType">Property type (state use) contains</label>
+        <input id="filterPropertyType" type="text" placeholder="e.g. Residential" />
+        <label>Assessed value ($)</label>
+        <div class="btn-row">
+          <input id="filterAssessedMin" type="number" placeholder="Min" />
+          <input id="filterAssessedMax" type="number" placeholder="Max" />
+        </div>
+        <label>Land acres</label>
+        <div class="btn-row">
+          <input id="filterAcresMin" type="number" placeholder="Min" step="0.01" />
+          <input id="filterAcresMax" type="number" placeholder="Max" step="0.01" />
+        </div>
+        <label>Last sale price ($)</label>
+        <div class="btn-row">
+          <input id="filterSalePriceMin" type="number" placeholder="Min" />
+          <input id="filterSalePriceMax" type="number" placeholder="Max" />
+        </div>
+        <button id="applyFiltersBtn">Apply filters</button>
+        <button id="resetFiltersBtn" class="secondary">Reset</button>
+        <div class="status" id="filterStatus"></div>
+      </div>
+    </div>
+
+    <div id="tabPaneResults" class="tab-pane">
+      <div class="results-half">
+        <div class="tool-section">
+          <div id="resultsLabel">No results yet — search, filter, or select parcels on the map.</div>
+          <label for="resultsSort">Sort by</label>
+          <select id="resultsSort">
+            <option value="owner">Owner</option>
+            <option value="location">Location</option>
+          </select>
+          <div id="resultsList"></div>
+          <button id="resultsExportCsvBtn" class="secondary" disabled>Export to CSV</button>
+          <button id="resultsExportMailingBtn" class="secondary" disabled>Export to mailing list</button>
+        </div>
+      </div>
+
+      <div class="details-half">
+        <div class="tool-section">
+          <h2 style="margin-bottom:8px;">Parcel Details</h2>
+          <div id="parcelDetailsPlaceholder" class="hint">Select a parcel on the map or in Results to see details here.</div>
+
+          <div id="parcelDetailsContent">
+            <div class="tab-bar details-tab-bar">
+              <button id="tabBtnPropLinks" class="active">Property Links</button>
+              <button id="tabBtnIdsUses">IDs &amp; Uses</button>
+              <button id="tabBtnValuations">Valuations</button>
+            </div>
+            <div class="details-pane-content">
+              <div id="detailsPanePropLinks" class="details-pane active"></div>
+              <div id="detailsPaneIdsUses" class="details-pane"></div>
+              <div id="detailsPaneValuations" class="details-pane"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tabPaneLayers" class="tab-pane">
+      <div class="tool-section">
+        <p class="hint">Reference overlays from state and federal sources. Toggle visibility, reorder within the map, and adjust transparency.</p>
+
+        <details class="layer-group" open>
+          <summary>State</summary>
+          <div id="stateLayerList"></div>
+        </details>
+
+        <details class="layer-group">
+          <summary>FEMA</summary>
+          <div id="femaLayerList"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="mapCell">
+    <div id="viewDiv"></div>
+
+    <div id="mapToolbar">
+      <div class="map-toolbar-header">
+        <h3 style="margin:0;">Search</h3>
+        <button id="mapToolbarToggle" class="panel-toggle-btn" title="Minimize">▲</button>
+      </div>
+      <div id="mapToolbarBody">
+      <select id="searchType">
+        <option value="parcel">Parcel ID or address</option>
+        <option value="owner">Owner name</option>
+      </select>
+      <input id="searchInput" type="text" placeholder="e.g. 12-34-56 or Smith" />
+      <button id="searchBtn">Search</button>
+      <div class="status" id="searchStatus"></div>
+
+      <hr />
+      <h3>Selection cursor</h3>
+      <div class="btn-row">
+        <button id="selectModeBtn" class="secondary toggle active">Select</button>
+        <button id="lassoModeBtn" class="secondary toggle">Lasso</button>
+      </div>
+      <button id="clearSelectionBtn" class="secondary">Clear</button>
+
+      <hr />
+      <h3>Find abutters</h3>
+      <div id="selectedParcelLabel">No parcel selected</div>
+      <label for="bufferDist">Buffer distance</label>
+      <input id="bufferDist" type="number" value="200" min="0" autocomplete="off" />
+      <label for="bufferUnit">Units</label>
+      <select id="bufferUnit">
+        <option value="feet">Feet</option>
+        <option value="meters">Meters</option>
+      </select>
+      <button id="findAbuttersBtn" class="secondary">Find abutters</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Display / Tools / Add Data tabs -->
+  <div id="rightPanel">
+    <div class="panel-header-bar">
+      <div class="panel-header-text">
+        <h1>Map Tools</h1>
+      </div>
+      <button id="rightPanelToggle" class="panel-toggle-btn" title="Minimize">▶</button>
+    </div>
+
+    <div class="tab-bar">
+      <button id="tabBtnDisplay" class="active">Display</button>
+      <button id="tabBtnTools">Tools</button>
+      <button id="tabBtnAddData">Add data</button>
+    </div>
+
+    <div id="tabPaneDisplay" class="tab-pane active">
+      <div class="tool-section">
+        <h2>Basemap</h2>
+        <select id="basemapSelect">
+          <option value="hybrid">Satellite + labels</option>
+          <option value="topo-vector">Topographic</option>
+          <option value="satellite">Satellite (imagery)</option>
+          <option value="streets-navigation-vector" selected>Streets (navigation)</option>
+        </select>
+      </div>
+      <div class="tool-section">
+        <button id="legendToggleBtn" class="secondary">Legend</button>
+        <div id="legendPanel" class="mini-toggle-panel">
+          <div id="legendContainer"></div>
+        </div>
+        <button id="bookmarksToggleBtn" class="secondary">Bookmarks</button>
+        <div id="bookmarksPanel" class="mini-toggle-panel">
+          <div id="bookmarksContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tabPaneTools" class="tab-pane">
+      <div class="tool-section">
+        <h2>Measure</h2>
+        <button id="measureDistanceBtn" class="secondary">Measure distance</button>
+        <button id="measureAreaBtn" class="secondary">Measure area</button>
+        <button id="clearMeasureBtn" class="secondary">Clear measurements</button>
+      </div>
+      <div class="tool-section">
+        <h2>Print / export</h2>
+        <label for="printTitle">Map title</label>
+        <input id="printTitle" type="text" value="Parcel Map" />
+        <button id="printBtn">Generate print view</button>
+        <div class="status" id="printStatus"></div>
+      </div>
+    </div>
+
+    <div id="tabPaneAddData" class="tab-pane">
+      <div class="tool-section">
+        <h2>Add data</h2>
+        <p class="hint">Add another ArcGIS layer by its REST URL (anything not already in the Layers tab).</p>
+        <label for="newLayerUrl">Layer URL</label>
+        <input id="newLayerUrl" type="text" placeholder="https://.../FeatureServer/0" />
+        <label for="newLayerType">Layer type</label>
+        <select id="newLayerType">
+          <option value="feature">Feature layer</option>
+          <option value="mapimage">Map image layer</option>
+          <option value="tile">Tile layer</option>
+        </select>
+        <button id="addLayerBtn" class="secondary">Add layer</button>
+        <div class="status" id="layerStatus"></div>
+        <div id="layerList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Print template: populated and printed on demand -->
+<div id="printSheet">
+  <div class="print-header">
+    <h1 id="printSheetTitle">Parcel Map</h1>
+    <div class="meta">
+      <div id="printSheetDate"></div>
+      <div>SECOG Parcel Viewer</div>
+    </div>
+  </div>
+  <div class="print-map-wrap">
+    <img id="printSheetImage" src="" alt="Map export" />
+    <div class="north-arrow">N&#8593;</div>
+  </div>
+  <div class="print-details">
+    <div class="layers-shown" id="printSheetLayers"></div>
+    <div id="printSheetSelection"></div>
+  </div>
+  <div class="print-footer">
+    <div>Prepared with the SECOG Parcel Viewer.</div>
+    <div>For informational purposes only. Not a legal survey.</div>
+  </div>
+</div>
+
+<script>
+require([
+  "esri/config",
+  "esri/Map",
+  "esri/views/MapView",
+  "esri/layers/FeatureLayer",
+  "esri/layers/GraphicsLayer",
+  "esri/layers/MapImageLayer",
+  "esri/layers/TileLayer",
+  "esri/geometry/geometryEngine",
+  "esri/widgets/DistanceMeasurement2D",
+  "esri/widgets/AreaMeasurement2D",
+  "esri/widgets/Legend",
+  "esri/widgets/Bookmarks",
+  "esri/widgets/ScaleBar",
+  "esri/widgets/Sketch/SketchViewModel",
+  "esri/core/reactiveUtils",
+  "esri/Graphic"
+], function (
+  esriConfig, Map, MapView, FeatureLayer, GraphicsLayer, MapImageLayer, TileLayer, geometryEngine,
+  DistanceMeasurement2D, AreaMeasurement2D, Legend, Bookmarks, ScaleBar, SketchViewModel, reactiveUtils, Graphic
+) {
+
+  // The parameter above named "Map" is the esri/Map module, which shadows the native
+  // JavaScript Map collection for the rest of this function. Alias the real one here,
+  // before that happens, for the plain key-value maps used later (selection tracking etc).
+  const JSMap = window.Map;
+
+  // ================= CONFIG — your actual SECOG service =================
+  const SERVICE_URL = "https://services6.arcgis.com/c8bwOPjaFB6olbad/arcgis/rest/services/Tax_Parcels_SECOG_WFL1/FeatureServer";
+
+  const PARCEL_LAYER_URL = SERVICE_URL + "/1"; // SECOG Current Assessed Parcels
+  const CAMA_TABLE_URL   = SERVICE_URL + "/4"; // SECOG CAMA current (related table, no geometry)
+  const CAMA_RELATIONSHIP_ID = 1;              // SECOG_Current_TaxRecords relationship (parcel -> CAMA)
+
+  const MAILING_LAYER_URL = SERVICE_URL + "/2"; // SECOG Mailing Addresses (fallback when CAMA mailing_address is blank)
+  const MAILING_RELATIONSHIP_ID = 0;            // SECOG_Mailing_List relationship (parcel -> Mailing Addresses)
+  const MAILING_HIDE_FIELDS = ["OBJECTID", "GlobalID", "Shape", "Shape__Area", "Shape__Length"];
+
+  // Parcel layer fields
+  const FIELD_LINK  = "Link";
+  const FIELD_PID   = "Parcel_ID";
+  const FIELD_TOWN  = "Town_Name";
+  const FIELD_ACRES = "Acres_Gis";
+  const FIELD_LOC   = "Location";
+
+  // CAMA table fields
+  const CAMA_JOIN_FIELD = "parcel_link";
+  const CAMA_OWNER      = "owner";
+  const CAMA_CO_OWNER   = "co_owner";
+  const CAMA_MAIL_ADDR  = "mailing_address";
+  const CAMA_MAIL_ADDR2 = "mailing_address_2";
+  const CAMA_MAIL_CITY  = "mailing_city";
+  const CAMA_MAIL_STATE = "mailing_state";
+  const CAMA_MAIL_ZIP   = "mailing_zip";
+  const CAMA_ASSESSED   = "assessed_total";
+  const CAMA_ASSESSED_LAND = "assessed_land";
+  const CAMA_ASSESSED_BLDG = "assessed_building";
+  const CAMA_SALE_PRICE = "sale_price";
+  const CAMA_SALE_DATE  = "sale_date";
+  const CAMA_ZONE       = "zone";
+  const CAMA_LIVING_AREA = "living_area";
+  const CAMA_BEDROOMS   = "number_of_bedroom";
+  const CAMA_STREET_NAME = "street_name";
+  const CAMA_NEIGHBORHOOD = "neighborhood";
+  const CAMA_STATE_USE_DESC = "state_use_description";
+  const CAMA_LAND_ACRES = "land_acres";
+  const CAMA_SITE_LINK = "cama_site_link";
+  const CAMA_SKETCH = "sketch";
+  const CAMA_BUILDING_PHOTO = "building_photo";
+
+  const RESULTS_CAMA_FIELDS = [
+    CAMA_OWNER, CAMA_MAIL_ADDR, CAMA_MAIL_ADDR2, CAMA_MAIL_CITY,
+    CAMA_MAIL_STATE, CAMA_MAIL_ZIP, CAMA_ASSESSED
+  ];
+
+  // Preset reference overlays for the left panel's "Layers" tab.
+  // Verified against each service's REST endpoint: CT NWI Wetlands, Wetlands (Regulated), and
+  // Natural Diversity Database each expose a single sublayer at /0; Soils_Farmland_Classification
+  // was given with /0 directly; the FEMA NFHL is a MapServer (multi-layer image service).
+  const STATE_LAYER_CONFIG = [
+    {
+      key: "ctWetlands", title: "CT NWI Wetlands (2024)",
+      url: "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Connecticut_NWI_Wetlands_2024/FeatureServer/0",
+      type: "feature", defaultVisible: false, defaultOpacity: 0.5
+    },
+    {
+      key: "regulatedWetlands", title: "Wetlands (Regulated)",
+      url: "https://services6.arcgis.com/c8bwOPjaFB6olbad/arcgis/rest/services/Wetlands_Regulated_WFL1/FeatureServer/0",
+      type: "feature", defaultVisible: false, defaultOpacity: 0.75
+    },
+    {
+      key: "farmlandSoils", title: "Soils — Farmland Classification",
+      url: "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Soils_Farmland_Classification/FeatureServer/0",
+      type: "feature", defaultVisible: false, defaultOpacity: 0.75
+    },
+    {
+      key: "naturalDiversity", title: "Natural Diversity Database",
+      url: "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Natural_Diversity_Database/FeatureServer/0",
+      type: "feature", defaultVisible: false, defaultOpacity: 0.75
+    }
+  ];
+  const FEMA_LAYER_CONFIG = [
+    {
+      key: "nfhl", title: "NFHL (Flood Hazard)",
+      url: "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer",
+      type: "mapimage", defaultVisible: false, defaultOpacity: 0.75
+    }
+  ];
+  // =========================================================================
+
+  const camaTable = new FeatureLayer({ url: CAMA_TABLE_URL });
+
+  function money(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    return "$" + Number(v).toLocaleString();
+  }
+  function textOrDash(v) {
+    return (v === null || v === undefined || v === "") ? "—" : v;
+  }
+
+  const parcelLayer = new FeatureLayer({
+    url: PARCEL_LAYER_URL,
+    title: "Parcels",
+    outFields: ["*"],
+    minScale: 50000,
+    // Popups are disabled entirely — parcel details now render in the embedded Results tab
+    // panel (see showParcelDetails below) rather than a map popup, avoiding the whole class
+    // of docking/timing/racing issues the native popup kept running into.
+    popupEnabled: false,
+    // Explicit label config, overriding whatever (if anything) the service itself publishes.
+    // Esri's labeling engine automatically avoids overlapping labels on its own; minScale
+    // keeps labels off entirely until parcels are large enough on screen to have room.
+    labelsVisible: true,
+    labelingInfo: [{
+      labelExpressionInfo: { expression: "$feature." + FIELD_PID },
+      labelPlacement: "always-horizontal",
+      minScale: 9000,
+      symbol: {
+        type: "text",
+        color: "#1b2027",
+        haloColor: "#ffffff",
+        haloSize: 1,
+        font: { size: 9, family: "Segoe UI" }
+      }
+    }]
+  });
+  const parcelLayerRef = parcelLayer;
+
+  const map = new Map({
+    basemap: "streets-navigation-vector",
+    layers: [parcelLayer]
+  });
+
+  const view = new MapView({
+    container: "viewDiv",
+    map: map,
+    zoom: 11,
+    center: [-72.05, 41.45] // SECOG region, southeastern Connecticut
+  });
+
+  // Both left and right panels now float over the map edge-to-edge (top to bottom), so any
+  // Esri UI docked to a corner would end up hidden underneath one of them. Top-center and
+  // bottom-center, between the two panels, are the only always-clear zones — that's where
+  // the zoom control, measurement widgets, and scale bar all live now.
+  view.ui.add("zoom", { position: "manual" });
+  view.when(function () {
+    const zoomEl = document.querySelector(".esri-zoom");
+    if (zoomEl) {
+      zoomEl.style.position = "absolute";
+      zoomEl.style.top = "12px";
+      zoomEl.style.left = "50%";
+      zoomEl.style.transform = "translateX(-50%)";
+    }
+  });
+
+  // Defensive isolation: make sure clicks/keystrokes inside the floating toolbar can never be
+  // intercepted by the map view's own event handling (MapView listens broadly for gestures).
+  // Capture-phase + stopPropagation guarantees native input behavior (typing, focusing, selecting)
+  // always reaches the toolbar's own fields first.
+  (function isolateToolbarEvents() {
+    const toolbarEl = document.getElementById("mapToolbar");
+    ["pointerdown", "mousedown", "touchstart", "keydown", "keypress", "keyup", "wheel"].forEach(function (evtName) {
+      toolbarEl.addEventListener(evtName, function (e) { e.stopPropagation(); }, true);
+    });
+  })();
+
+  // Warm up hit-testing and the popup once the view is fully ready, so the very first real
+  // click doesn't behave differently from subsequent ones.
+  view.when(function () {
+    view.hitTest({ x: 0, y: 0 });
+  });
+
+  // ---- Basemap switcher ----
+  document.getElementById("basemapSelect").addEventListener("change", function () {
+    map.basemap = this.value;
+  });
+
+  // ---- Dynamic scale bar, centered at the bottom of the map ----
+  const scaleBar = new ScaleBar({ view: view, unit: "dual" });
+  view.ui.add(scaleBar, { position: "manual" });
+  scaleBar.container.style.position = "absolute";
+  scaleBar.container.style.bottom = "10px";
+  scaleBar.container.style.left = "50%";
+  scaleBar.container.style.transform = "translateX(-50%)";
+
+  // ---- Legend and Bookmarks: compact, toggled from the right panel ----
+  const legend = new Legend({ view: view, container: "legendContainer" });
+  const bookmarks = new Bookmarks({
+    view: view,
+    container: "bookmarksContainer",
+    editingEnabled: true,
+    bookmarks: []
+  });
+
+  document.getElementById("legendToggleBtn").addEventListener("click", function () {
+    document.getElementById("legendPanel").classList.toggle("open");
+  });
+  document.getElementById("bookmarksToggleBtn").addEventListener("click", function () {
+    document.getElementById("bookmarksPanel").classList.toggle("open");
+  });
+
+  // ---- Panel tabs (shared helper for left and right panels) ----
+  function wireTabs(barButtonIds, paneIds) {
+    barButtonIds.forEach(function (btnId, i) {
+      document.getElementById(btnId).addEventListener("click", function () {
+        barButtonIds.forEach(function (id, j) {
+          document.getElementById(id).classList.toggle("active", j === i);
+          document.getElementById(paneIds[j]).classList.toggle("active", j === i);
+        });
+      });
+    });
+  }
+  wireTabs(
+    ["tabBtnFilters", "tabBtnResults", "tabBtnLayers"],
+    ["tabPaneFilters", "tabPaneResults", "tabPaneLayers"]
+  );
+  wireTabs(
+    ["tabBtnDisplay", "tabBtnTools", "tabBtnAddData"],
+    ["tabPaneDisplay", "tabPaneTools", "tabPaneAddData"]
+  );
+  function switchLeftTab(tab) {
+    setLeftPanelCollapsed(false); // auto-expand so newly populated results are visible
+    document.getElementById(
+      tab === "filters" ? "tabBtnFilters" : tab === "results" ? "tabBtnResults" : "tabBtnLayers"
+    ).click();
+  }
+
+  // ---- Panel minimize / expand ----
+  // The map is now full-bleed behind both floating panels, so collapsing a panel no longer
+  // needs to resize a grid track — it just needs to keep the search toolbar (which floats
+  // in the same top-left corner as the left panel) from overlapping it.
+  function repositionMapToolbar() {
+    const leftPanelWidth = document.getElementById("leftPanel").classList.contains("collapsed") ? 56 : 280;
+    document.getElementById("mapToolbar").style.left = (12 + leftPanelWidth + 12) + "px";
+  }
+
+  function setLeftPanelCollapsed(collapsed) {
+    document.getElementById("leftPanel").classList.toggle("collapsed", collapsed);
+    document.getElementById("leftPanelToggle").textContent = collapsed ? "▶" : "◀";
+    repositionMapToolbar();
+  }
+
+  function setRightPanelCollapsed(collapsed) {
+    document.getElementById("rightPanel").classList.toggle("collapsed", collapsed);
+    document.getElementById("rightPanelToggle").textContent = collapsed ? "◀" : "▶";
+  }
+
+  document.getElementById("leftPanelToggle").addEventListener("click", function () {
+    setLeftPanelCollapsed(!document.getElementById("leftPanel").classList.contains("collapsed"));
+  });
+  document.getElementById("rightPanelToggle").addEventListener("click", function () {
+    setRightPanelCollapsed(!document.getElementById("rightPanel").classList.contains("collapsed"));
+  });
+  repositionMapToolbar(); // set the toolbar's initial offset to clear the (expanded) left panel
+
+  document.getElementById("mapToolbarToggle").addEventListener("click", function () {
+    const toolbarEl = document.getElementById("mapToolbar");
+    const collapsed = !toolbarEl.classList.contains("collapsed");
+    toolbarEl.classList.toggle("collapsed", collapsed);
+    this.textContent = collapsed ? "▼" : "▲";
+  });
+
+  // ---- Preset reference layers (State / FEMA), added above parcels, below selection graphics ----
+  // popupEnabled: false — these are reference overlays, not the interactive layer. Leaving
+  // Esri's auto-generated default popup enabled on them meant clicking near a wetlands/soils
+  // feature could surface THAT layer's (often broken) auto-popup instead of the parcel
+  // underneath, which is what was producing the popup errors.
+  function buildPresetLayer(cfg) {
+    let layer;
+    if (cfg.type === "mapimage") {
+      layer = new MapImageLayer({ url: cfg.url, opacity: cfg.defaultOpacity, visible: cfg.defaultVisible, popupEnabled: false });
+    } else {
+      layer = new FeatureLayer({ url: cfg.url, opacity: cfg.defaultOpacity, visible: cfg.defaultVisible, popupEnabled: false });
+    }
+    return layer;
+  }
+
+  const presetLayerEntries = []; // { key, title, layer }
+
+  function renderPresetGroup(containerId, entries) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = "";
+    entries.forEach(function (entry) {
+      const row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML =
+        '<div class="row-top">' +
+          '<input type="checkbox" ' + (entry.layer.visible ? "checked" : "") + ' />' +
+          '<span class="name">' + entry.title + '</span>' +
+          '<button class="reorder up" title="Move up">▲</button>' +
+          '<button class="reorder down" title="Move down">▼</button>' +
+        '</div>' +
+        '<input type="range" min="0" max="100" value="' + Math.round(entry.layer.opacity * 100) + '" />';
+
+      row.querySelector('input[type="checkbox"]').addEventListener("change", function (e) {
+        entry.layer.visible = e.target.checked;
+      });
+      row.querySelector('input[type="range"]').addEventListener("input", function (e) {
+        entry.layer.opacity = Number(e.target.value) / 100;
+      });
+      row.querySelector("button.up").addEventListener("click", function () {
+        const idx = map.layers.indexOf(entry.layer);
+        if (idx < map.layers.length - 1) map.reorder(entry.layer, idx + 1); // higher index draws on top
+      });
+      row.querySelector("button.down").addEventListener("click", function () {
+        const idx = map.layers.indexOf(entry.layer);
+        if (idx > 0) map.reorder(entry.layer, idx - 1);
+      });
+
+      el.appendChild(row);
+    });
+  }
+
+  STATE_LAYER_CONFIG.forEach(function (cfg) {
+    const layer = buildPresetLayer(cfg);
+    map.add(layer);
+    presetLayerEntries.push({ key: cfg.key, title: cfg.title, layer: layer, group: "state" });
+  });
+  FEMA_LAYER_CONFIG.forEach(function (cfg) {
+    const layer = buildPresetLayer(cfg);
+    map.add(layer);
+    presetLayerEntries.push({ key: cfg.key, title: cfg.title, layer: layer, group: "fema" });
+  });
+
+  renderPresetGroup("stateLayerList", presetLayerEntries.filter(function (e) { return e.group === "state"; }));
+  renderPresetGroup("femaLayerList", presetLayerEntries.filter(function (e) { return e.group === "fema"; }));
+
+  // ---- Add Data (user-supplied ArcGIS REST URLs), kept separate from the curated preset layers ----
+  const addedLayers = [];
+  let addedLayerCounter = 0;
+
+  function renderLayerList() {
+    const listEl = document.getElementById("layerList");
+    listEl.innerHTML = "";
+
+    const baseRow = document.createElement("div");
+    baseRow.className = "layer-row";
+    baseRow.innerHTML =
+      '<input type="checkbox" checked />' +
+      '<span class="layer-name">Parcels</span>';
+    baseRow.querySelector("input").addEventListener("change", function (e) {
+      parcelLayer.visible = e.target.checked;
+    });
+    listEl.appendChild(baseRow);
+
+    addedLayers.forEach(function (entry) {
+      const row = document.createElement("div");
+      row.className = "layer-row";
+      row.innerHTML =
+        '<input type="checkbox" ' + (entry.layer.visible ? "checked" : "") + ' />' +
+        '<span class="layer-name">' + entry.title + '</span>' +
+        '<button class="remove" title="Remove layer">✕</button>';
+      row.querySelector('input[type="checkbox"]').addEventListener("change", function (e) {
+        entry.layer.visible = e.target.checked;
+      });
+      row.querySelector("button.remove").addEventListener("click", function () {
+        map.remove(entry.layer);
+        const idx = addedLayers.indexOf(entry);
+        if (idx !== -1) addedLayers.splice(idx, 1);
+        renderLayerList();
+      });
+      listEl.appendChild(row);
+    });
+  }
+  renderLayerList();
+
+  document.getElementById("addLayerBtn").addEventListener("click", function () {
+    const url = document.getElementById("newLayerUrl").value.trim();
+    const type = document.getElementById("newLayerType").value;
+    const statusEl = document.getElementById("layerStatus");
+    if (!url) {
+      statusEl.textContent = "Enter a layer URL first.";
+      return;
+    }
+
+    let layer;
+    try {
+      if (type === "feature") {
+        layer = new FeatureLayer({ url: url, popupEnabled: false });
+      } else if (type === "mapimage") {
+        layer = new MapImageLayer({ url: url, popupEnabled: false });
+      } else {
+        layer = new TileLayer({ url: url });
+      }
+    } catch (err) {
+      statusEl.textContent = "Could not create layer — check the URL.";
+      return;
+    }
+
+    statusEl.textContent = "Loading layer…";
+    layer.load().then(function () {
+      addedLayerCounter++;
+      const title = layer.title || ("Layer " + addedLayerCounter);
+      map.add(layer);
+      addedLayers.push({ id: addedLayerCounter, title: title, layer: layer, removable: true });
+      renderLayerList();
+      statusEl.textContent = "Added \"" + title + "\".";
+      document.getElementById("newLayerUrl").value = "";
+    }).catch(function (err) {
+      console.error(err);
+      statusEl.textContent = "Failed to load layer — check the URL and that it's a valid " +
+        (type === "feature" ? "Feature Layer" : type === "mapimage" ? "Map Image Layer" : "Tile Layer") + " endpoint.";
+    });
+  });
+
+  // ---- Generic pagination helper ----
+  function queryAllFeatures(layer, queryParams, cap) {
+    const pageSize = 2000;
+    const maxResults = cap || 10000;
+    let allFeatures = [];
+
+    function fetchPage(offset) {
+      return layer.queryFeatures(Object.assign({}, queryParams, {
+        num: pageSize,
+        start: offset
+      })).then(function (result) {
+        allFeatures = allFeatures.concat(result.features);
+        const gotFullPage = result.features.length === pageSize;
+        if (gotFullPage && allFeatures.length < maxResults) {
+          return fetchPage(offset + pageSize);
+        }
+        return allFeatures;
+      });
+    }
+
+    return fetchPage(0);
+  }
+
+  function buildChunkedInClause(fieldName, values, chunkSize) {
+    const chunks = [];
+    for (let i = 0; i < values.length; i += chunkSize) {
+      const slice = values.slice(i, i + chunkSize);
+      const quoted = slice.map(function (v) { return "'" + String(v).replace(/'/g, "''") + "'"; });
+      chunks.push("(" + fieldName + " IN (" + quoted.join(",") + "))");
+    }
+    return chunks.join(" OR ");
+  }
+
+  // =========================================================================
+  // Unified Results tab
+  // =========================================================================
+  let activeResultsData = [];
+  let activeResultsFeatures = [];
+
+  function buildResultsRow(feature, camaAttrs) {
+    camaAttrs = camaAttrs || {};
+    return {
+      "Parcel ID": textOrDash(feature.attributes[FIELD_PID]),
+      "Owner": textOrDash(camaAttrs[CAMA_OWNER]),
+      "Mailing Address": textOrDash(camaAttrs[CAMA_MAIL_ADDR]),
+      "Mailing City": textOrDash(camaAttrs[CAMA_MAIL_CITY]),
+      "Mailing State": textOrDash(camaAttrs[CAMA_MAIL_STATE]),
+      "Mailing Zip": textOrDash(camaAttrs[CAMA_MAIL_ZIP]),
+      "Location": textOrDash(feature.attributes[FIELD_LOC]),
+      "Town": textOrDash(feature.attributes[FIELD_TOWN]),
+      "Acres (GIS)": textOrDash(feature.attributes[FIELD_ACRES]),
+      "Assessed Total": camaAttrs[CAMA_ASSESSED] || ""
+    };
+  }
+
+  // =========================================================================
+  // Parcel Details panel (bottom half of the Results tab) — replaces the map
+  // popup entirely. Three sub-tabs, each pulling from either the parcel layer
+  // itself or the related CAMA table.
+  // =========================================================================
+  const DETAILS_GROUPS = {
+    links: [
+      { label: "Owner", source: "cama", field: CAMA_OWNER },
+      { label: "Co-owner", source: "cama", field: CAMA_CO_OWNER },
+      { label: "Mailing Address", source: "cama", field: CAMA_MAIL_ADDR },
+      { label: "Mailing Address 2", source: "cama", field: CAMA_MAIL_ADDR2 },
+      { label: "Mailing City", source: "cama", field: CAMA_MAIL_CITY },
+      { label: "Mailing State", source: "cama", field: CAMA_MAIL_STATE },
+      { label: "Mailing Zip", source: "cama", field: CAMA_MAIL_ZIP }
+    ],
+    idsUses: [
+      { label: "Parcel ID", source: "parcel", field: FIELD_PID },
+      { label: "Location", source: "parcel", field: FIELD_LOC },
+      { label: "Town", source: "parcel", field: FIELD_TOWN },
+      { label: "Zone", source: "cama", field: CAMA_ZONE },
+      { label: "Property Type", source: "cama", field: CAMA_STATE_USE_DESC },
+      { label: "Neighborhood", source: "cama", field: CAMA_NEIGHBORHOOD },
+      { label: "Street Name", source: "cama", field: CAMA_STREET_NAME },
+      { label: "Living Area (sf)", source: "cama", field: CAMA_LIVING_AREA },
+      { label: "Bedrooms", source: "cama", field: CAMA_BEDROOMS },
+      { label: "Land Acres (CAMA)", source: "cama", field: CAMA_LAND_ACRES },
+      { label: "Acres (GIS)", source: "parcel", field: FIELD_ACRES }
+    ],
+    valuations: [
+      { label: "Assessed Total", source: "cama", field: CAMA_ASSESSED, money: true },
+      { label: "Assessed Land", source: "cama", field: CAMA_ASSESSED_LAND, money: true },
+      { label: "Assessed Building", source: "cama", field: CAMA_ASSESSED_BLDG, money: true },
+      { label: "Last Sale Price", source: "cama", field: CAMA_SALE_PRICE, money: true },
+      { label: "Last Sale Date", source: "cama", field: CAMA_SALE_DATE }
+    ]
+  };
+
+  const DETAILS_CAMA_FIELDS = [
+    CAMA_OWNER, CAMA_CO_OWNER, CAMA_MAIL_ADDR, CAMA_MAIL_ADDR2, CAMA_MAIL_CITY, CAMA_MAIL_STATE, CAMA_MAIL_ZIP,
+    CAMA_ZONE, CAMA_STATE_USE_DESC, CAMA_NEIGHBORHOOD, CAMA_STREET_NAME, CAMA_LIVING_AREA, CAMA_BEDROOMS,
+    CAMA_LAND_ACRES, CAMA_ASSESSED, CAMA_ASSESSED_LAND, CAMA_ASSESSED_BLDG, CAMA_SALE_PRICE, CAMA_SALE_DATE,
+    CAMA_SITE_LINK, CAMA_SKETCH, CAMA_BUILDING_PHOTO
+  ];
+
+  function renderDetailsGroup(groupKey, parcelAttrs, camaAttrs) {
+    const rows = DETAILS_GROUPS[groupKey];
+    let html = "<table>";
+    rows.forEach(function (row) {
+      const raw = row.source === "parcel" ? parcelAttrs[row.field] : (camaAttrs ? camaAttrs[row.field] : undefined);
+      const val = row.money ? money(raw) : textOrDash(raw);
+      html += "<tr><td class=\"label\">" + row.label + "</td><td>" + val + "</td></tr>";
+    });
+    html += "</table>";
+    return html;
+  }
+
+  // Renders cama_site_link / sketch / building_photo as clickable links (opening in a new
+  // tab) rather than plain text, since these fields hold URLs into the assessor's system.
+  function renderPropertyCardLinks(camaAttrs) {
+    camaAttrs = camaAttrs || {};
+    const items = [
+      { label: "Property Card", url: camaAttrs[CAMA_SITE_LINK] },
+      { label: "Sketch", url: camaAttrs[CAMA_SKETCH] },
+      { label: "Building Photo", url: camaAttrs[CAMA_BUILDING_PHOTO] }
+    ];
+    let html = '<div class="section-title">Property Card Links</div><table>';
+    items.forEach(function (item) {
+      const cell = item.url
+        ? '<a href="' + item.url + '" target="_blank" rel="noopener noreferrer">Open</a>'
+        : "—";
+      html += "<tr><td class=\"label\">" + item.label + "</td><td>" + cell + "</td></tr>";
+    });
+    html += "</table>";
+    return html;
+  }
+
+  function showParcelDetails(feature) {
+    document.getElementById("parcelDetailsPlaceholder").style.display = "none";
+    document.getElementById("parcelDetailsContent").classList.add("open");
+    document.getElementById("tabBtnPropLinks").click(); // reset to the first sub-tab each time
+
+    // Parcel-layer fields (IDs & Uses partially) render immediately; CAMA-sourced fields
+    // show a loading state until the related-record query resolves.
+    document.getElementById("detailsPanePropLinks").innerHTML = '<div class="loading">Loading…</div>';
+    document.getElementById("detailsPaneIdsUses").innerHTML = renderDetailsGroup("idsUses", feature.attributes, {});
+    document.getElementById("detailsPaneValuations").innerHTML = '<div class="loading">Loading…</div>';
+
+    const oid = feature.attributes.OBJECTID;
+    if (oid === null || oid === undefined) return;
+
+    parcelLayerRef.queryRelatedFeatures({
+      objectIds: [oid],
+      relationshipId: CAMA_RELATIONSHIP_ID,
+      outFields: DETAILS_CAMA_FIELDS
+    }).then(function (relatedResult) {
+      const bucket = relatedResult[oid];
+      const rec = (bucket && bucket.features && bucket.features[0]) ? bucket.features[0] : null;
+      const camaAttrs = rec ? rec.attributes : {};
+
+      document.getElementById("detailsPanePropLinks").innerHTML =
+        renderDetailsGroup("links", feature.attributes, camaAttrs) +
+        renderPropertyCardLinks(camaAttrs);
+      document.getElementById("detailsPaneIdsUses").innerHTML = renderDetailsGroup("idsUses", feature.attributes, camaAttrs);
+      document.getElementById("detailsPaneValuations").innerHTML = renderDetailsGroup("valuations", feature.attributes, camaAttrs);
+    }).catch(function (err) {
+      console.error(err);
+      document.getElementById("detailsPanePropLinks").innerHTML = '<div class="none">Could not load CAMA data.</div>';
+      document.getElementById("detailsPaneValuations").innerHTML = '<div class="none">Could not load CAMA data.</div>';
+    });
+  }
+
+  function hideParcelDetails() {
+    document.getElementById("parcelDetailsPlaceholder").style.display = "";
+    document.getElementById("parcelDetailsContent").classList.remove("open");
+    document.getElementById("detailsPanePropLinks").innerHTML = "";
+    document.getElementById("detailsPaneIdsUses").innerHTML = "";
+    document.getElementById("detailsPaneValuations").innerHTML = "";
+  }
+
+  wireTabs(
+    ["tabBtnPropLinks", "tabBtnIdsUses", "tabBtnValuations"],
+    ["detailsPanePropLinks", "detailsPaneIdsUses", "detailsPaneValuations"]
+  );
+
+  function setActiveResults(label, rows, features) {
+    activeResultsData = rows;
+    activeResultsFeatures = features;
+    document.getElementById("resultsLabel").textContent =
+      rows.length === 0 ? (label + " — no matches.") : (label + " — " + rows.length + " parcel" + (rows.length === 1 ? "" : "s") + ".");
+    switchLeftTab("results");
+    drawResultsList();
+  }
+
+  function drawResultsList() {
+    const listEl = document.getElementById("resultsList");
+    listEl.innerHTML = "";
+    const sortBy = document.getElementById("resultsSort").value;
+
+    const paired = activeResultsData.map(function (row, i) {
+      return { row: row, feature: activeResultsFeatures[i] };
+    });
+
+    paired.sort(function (a, b) {
+      if (sortBy === "owner") {
+        return String(a.row["Owner"] || "").localeCompare(String(b.row["Owner"] || ""));
+      }
+      return String(a.row["Location"] || "").localeCompare(String(b.row["Location"] || ""));
+    });
+
+    paired.forEach(function (pair) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML =
+        '<div class="apn">' + pair.row["Parcel ID"] + "</div>" +
+        '<div class="owner">' + (pair.row["Owner"] !== "—" ? pair.row["Owner"] : pair.row["Location"]) + "</div>";
+      row.addEventListener("click", function () {
+        if (pair.feature && pair.feature.geometry) {
+          view.goTo({ target: pair.feature.geometry, scale: 3000 }).then(function () {
+            showParcelDetails(pair.feature);
+          });
+        }
+      });
+      listEl.appendChild(row);
+    });
+
+    const hasResults = activeResultsData.length > 0;
+    document.getElementById("resultsExportCsvBtn").disabled = !hasResults;
+    document.getElementById("resultsExportMailingBtn").disabled = !hasResults;
+  }
+
+  document.getElementById("resultsSort").addEventListener("change", drawResultsList);
+
+  // ---- Export helpers ----
+  function csvEscape(val) {
+    const s = String(val === null || val === undefined ? "" : val);
+    if (/[",\n]/.test(s)) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function timestampedFilename(prefix, ext) {
+    const d = new Date();
+    const stamp = d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+    return prefix + "-" + stamp + "." + ext;
+  }
+
+  function exportDataToCsv(data, filenamePrefix) {
+    if (!data || data.length === 0) return;
+    const headers = Object.keys(data[0]);
+    const lines = [headers.join(",")];
+    data.forEach(function (row) {
+      lines.push(headers.map(function (h) { return csvEscape(row[h]); }).join(","));
+    });
+    downloadBlob(new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" }), timestampedFilename(filenamePrefix, "csv"));
+  }
+
+  document.getElementById("resultsExportCsvBtn").addEventListener("click", function () {
+    exportDataToCsv(activeResultsData, "results");
+  });
+  document.getElementById("resultsExportMailingBtn").addEventListener("click", function () {
+    const mailingRows = activeResultsData.map(function (row) {
+      return {
+        "Owner": row["Owner"],
+        "Mailing Address": row["Mailing Address"],
+        "Mailing City": row["Mailing City"],
+        "Mailing State": row["Mailing State"],
+        "Mailing Zip": row["Mailing Zip"],
+        "Parcel ID": row["Parcel ID"]
+      };
+    });
+    exportDataToCsv(mailingRows, "mailing-list");
+  });
+
+  // ---- Filters ----
+  // Matches are shown as a purple outline on filterHighlightLayer (defined further below,
+  // but safe to reference here since this handler only runs later, on click) — every
+  // parcel stays visible in its default color regardless of whether it matches.
+  function highlightFilterMatches(features) {
+    filterHighlightLayer.removeAll();
+    features.forEach(function (f) {
+      filterHighlightLayer.add(new Graphic({ geometry: f.geometry, symbol: filterMatchSymbol }));
+    });
+  }
+
+  document.getElementById("applyFiltersBtn").addEventListener("click", function () {
+    const statusEl = document.getElementById("filterStatus");
+    const esc = function (v) { return v.trim().replace(/'/g, "''"); };
+
+    const town = document.getElementById("filterTown").value;
+    const street = document.getElementById("filterStreet").value;
+    const owner = document.getElementById("filterOwner").value;
+    const zone = document.getElementById("filterZone").value;
+    const neighborhood = document.getElementById("filterNeighborhood").value;
+    const propertyType = document.getElementById("filterPropertyType").value;
+    const assessedMin = document.getElementById("filterAssessedMin").value;
+    const assessedMax = document.getElementById("filterAssessedMax").value;
+    const acresMin = document.getElementById("filterAcresMin").value;
+    const acresMax = document.getElementById("filterAcresMax").value;
+    const salePriceMin = document.getElementById("filterSalePriceMin").value;
+    const salePriceMax = document.getElementById("filterSalePriceMax").value;
+
+    // Town lives on the parcel layer itself (Town_Name), unlike every other filter field
+    // which lives on the related CAMA table — so it's applied directly to the parcel query
+    // rather than folded into the CAMA where clause below.
+    const townClause = town.trim() ? (FIELD_TOWN + " LIKE '%" + esc(town) + "%'") : null;
+
+    const conditions = [];
+    if (street.trim()) conditions.push(CAMA_STREET_NAME + " LIKE '%" + esc(street) + "%'");
+    if (owner.trim()) conditions.push(CAMA_OWNER + " LIKE '%" + esc(owner) + "%'");
+    if (zone.trim()) conditions.push(CAMA_ZONE + " LIKE '%" + esc(zone) + "%'");
+    if (neighborhood.trim()) conditions.push(CAMA_NEIGHBORHOOD + " LIKE '%" + esc(neighborhood) + "%'");
+    if (propertyType.trim()) conditions.push(CAMA_STATE_USE_DESC + " LIKE '%" + esc(propertyType) + "%'");
+    if (assessedMin !== "") conditions.push(CAMA_ASSESSED + " >= " + Number(assessedMin));
+    if (assessedMax !== "") conditions.push(CAMA_ASSESSED + " <= " + Number(assessedMax));
+    if (acresMin !== "") conditions.push(CAMA_LAND_ACRES + " >= " + Number(acresMin));
+    if (acresMax !== "") conditions.push(CAMA_LAND_ACRES + " <= " + Number(acresMax));
+    if (salePriceMin !== "") conditions.push(CAMA_SALE_PRICE + " >= " + Number(salePriceMin));
+    if (salePriceMax !== "") conditions.push(CAMA_SALE_PRICE + " <= " + Number(salePriceMax));
+
+    if (conditions.length === 0 && !townClause) {
+      filterHighlightLayer.removeAll();
+      statusEl.textContent = "No filters set.";
+      return;
+    }
+
+    // Town-only filter: no need to touch the CAMA table at all, query the parcel layer directly.
+    if (conditions.length === 0) {
+      statusEl.textContent = "Applying filter…";
+
+      queryAllFeatures(parcelLayer, {
+        where: townClause,
+        outFields: ["*"],
+        returnGeometry: true
+      }, 5000).then(function (parcelFeatures) {
+        highlightFilterMatches(parcelFeatures);
+        const rows = parcelFeatures.map(function (f) { return buildResultsRow(f, {}); });
+        setActiveResults("Filtered parcels", rows, parcelFeatures);
+        statusEl.textContent = parcelFeatures.length + " parcel" + (parcelFeatures.length === 1 ? "" : "s") + " match this filter.";
+      }).catch(function (err) {
+        console.error(err);
+        statusEl.textContent = "Filter query failed — check field names in the script.";
+      });
+      return;
+    }
+
+    const where = conditions.join(" AND ");
+    statusEl.textContent = "Applying filters…";
+
+    queryAllFeatures(camaTable, {
+      where: where,
+      outFields: [CAMA_JOIN_FIELD].concat(RESULTS_CAMA_FIELDS),
+      returnGeometry: false
+    }, 5000).then(function (camaFeatures) {
+      const camaByLink = {};
+      camaFeatures.forEach(function (f) {
+        camaByLink[f.attributes[CAMA_JOIN_FIELD]] = f.attributes;
+      });
+
+      const uniqueLinks = Object.keys(camaByLink);
+
+      if (uniqueLinks.length === 0) {
+        filterHighlightLayer.removeAll();
+        statusEl.textContent = "No parcels match these filters.";
+        setActiveResults("Filtered parcels", [], []);
+        return;
+      }
+
+      let parcelWhere = buildChunkedInClause(FIELD_LINK, uniqueLinks, 500);
+      if (townClause) parcelWhere = "(" + parcelWhere + ") AND " + townClause;
+
+      statusEl.textContent = uniqueLinks.length + " parcel" + (uniqueLinks.length === 1 ? "" : "s") + " match these filters. Loading details…";
+
+      queryAllFeatures(parcelLayer, {
+        where: parcelWhere,
+        outFields: ["*"],
+        returnGeometry: true
+      }, 5000).then(function (parcelFeatures) {
+        highlightFilterMatches(parcelFeatures);
+        const rows = parcelFeatures.map(function (f) {
+          return buildResultsRow(f, camaByLink[f.attributes[FIELD_LINK]]);
+        });
+        setActiveResults("Filtered parcels", rows, parcelFeatures);
+        statusEl.textContent = parcelFeatures.length + " parcel" + (parcelFeatures.length === 1 ? "" : "s") + " match these filters.";
+      }).catch(function (err) {
+        console.error(err);
+        statusEl.textContent = "Matched " + uniqueLinks.length + " parcels, but loading details failed.";
+      });
+    }).catch(function (err) {
+      console.error(err);
+      statusEl.textContent = "Filter query failed — check field names in the script.";
+    });
+  });
+
+  document.getElementById("resetFiltersBtn").addEventListener("click", function () {
+    ["filterTown", "filterStreet", "filterOwner", "filterZone", "filterNeighborhood", "filterPropertyType",
+     "filterAssessedMin", "filterAssessedMax", "filterAcresMin", "filterAcresMax",
+     "filterSalePriceMin", "filterSalePriceMax"].forEach(function (id) {
+      document.getElementById(id).value = "";
+    });
+    filterHighlightLayer.removeAll();
+    document.getElementById("filterStatus").textContent = "Filters cleared.";
+  });
+
+  // ---- Selection graphics (click-select + buffer/abutters), added above preset layers ----
+  let selectedParcelGraphic = null; // set only when exactly one parcel is selected (needed for Find Abutters)
+  let bufferGraphic = null;
+
+  // Two parallel maps, keyed by OBJECTID:
+  //  - selectedFeaturesByOid holds the ORIGINAL parcelLayer graphic (used for the popup,
+  //    Results rows, and export — must have .layer === parcelLayer for the popup to render).
+  //  - highlightGraphicsByOid holds the CLONE actually drawn on gfxLayer for the yellow
+  //    outline. Keeping these separate matters: passing the gfxLayer clone to the popup
+  //    (its .layer is gfxLayer, which has popupEnabled:false) silently fails to render.
+  const selectedFeaturesByOid = new JSMap();
+  const highlightGraphicsByOid = new JSMap();
+
+  const gfxLayer = new GraphicsLayer({ title: "Selection", popupEnabled: false });
+  map.add(gfxLayer);
+
+  const lassoGfxLayer = new GraphicsLayer({ title: "Lasso Selection", popupEnabled: false });
+  map.add(lassoGfxLayer);
+
+  // Filter matches are shown as a purple outline over the parcel, rather than hiding
+  // non-matching parcels — every parcel stays visible in its default color at all times.
+  const filterHighlightLayer = new GraphicsLayer({ title: "Filter Matches", popupEnabled: false });
+  map.add(filterHighlightLayer);
+
+  const filterMatchSymbol = {
+    type: "simple-fill",
+    color: [0, 0, 0, 0],
+    outline: { color: [155, 48, 210, 1], width: 2.5 }
+  };
+
+  const selectedSymbol = {
+    type: "simple-fill",
+    color: [255, 221, 0, 0.35],
+    outline: { color: [230, 170, 0], width: 2 }
+  };
+  const bufferSymbol = {
+    type: "simple-fill",
+    color: [0, 0, 0, 0],
+    outline: { color: [47, 93, 80, 0.9], width: 1.5, style: "dash" }
+  };
+  const abutterSymbol = {
+    type: "simple-fill",
+    color: [47, 93, 80, 0.25],
+    outline: { color: [47, 93, 80, 1], width: 1.5 }
+  };
+  const lassoSymbol = {
+    type: "simple-fill",
+    color: [255, 221, 0, 0.35],
+    outline: { color: [230, 170, 0], width: 2 }
+  };
+
+  // Adds a parcel to the selection: stores the original for popup/data use, and a
+  // separately-tracked highlight clone for the visible yellow outline.
+  function addSelection(oid, originalGraphic) {
+    const clone = originalGraphic.clone();
+    clone.symbol = selectedSymbol;
+    gfxLayer.add(clone);
+    highlightGraphicsByOid.set(oid, clone);
+    selectedFeaturesByOid.set(oid, originalGraphic);
+  }
+
+  function removeSelection(oid) {
+    const clone = highlightGraphicsByOid.get(oid);
+    if (clone) gfxLayer.remove(clone);
+    highlightGraphicsByOid.delete(oid);
+    selectedFeaturesByOid.delete(oid);
+  }
+
+  function clearAllSelections() {
+    gfxLayer.removeAll();
+    highlightGraphicsByOid.clear();
+    selectedFeaturesByOid.clear();
+  }
+
+  function clearSelectionGraphics() {
+    clearAllSelections();
+    lassoGfxLayer.removeAll();
+    selectedParcelGraphic = null;
+    bufferGraphic = null;
+    document.getElementById("selectedParcelLabel").textContent = "No parcel selected";
+    setActiveResults("No selection", [], []);
+    document.getElementById("resultsLabel").textContent = "No results yet — search, filter, or select parcels on the map.";
+    hideParcelDetails();
+  }
+  document.getElementById("clearSelectionBtn").addEventListener("click", clearSelectionGraphics);
+
+  // ---- Select / Lasso mode toggle ----
+  // updateOnGraphicClick: false — without this, SketchViewModel lets the person click the
+  // just-drawn shape afterward to move/resize/rotate it. We only want a one-shot lasso that
+  // selects parcels and disappears; the drawn shape itself is never meant to be interactive.
+  const sketchVM = new SketchViewModel({
+    view: view,
+    layer: lassoGfxLayer,
+    updateOnGraphicClick: false,
+    polygonSymbol: {
+      type: "simple-fill",
+      color: [255, 221, 0, 0.15],
+      outline: { color: [230, 170, 0], width: 1.5, style: "dash" }
+    }
+  });
+
+  function setSelectMode(mode) {
+    document.getElementById("selectModeBtn").classList.toggle("active", mode === "select");
+    document.getElementById("lassoModeBtn").classList.toggle("active", mode === "lasso");
+    sketchVM.cancel();
+    if (mode === "lasso") {
+      sketchVM.create("polygon", { mode: "freehand" });
+    }
+  }
+  document.getElementById("selectModeBtn").addEventListener("click", function () { setSelectMode("select"); });
+  document.getElementById("lassoModeBtn").addEventListener("click", function () { setSelectMode("lasso"); });
+
+  // Re-derives all selection UI (label, popup, Results tab) from selectedFeaturesByOid.
+  // Called after every click so single-select and multi-select stay in sync.
+  function refreshSelectionUI() {
+    const count = selectedFeaturesByOid.size;
+
+    if (count === 0) {
+      selectedParcelGraphic = null;
+      document.getElementById("selectedParcelLabel").textContent = "No parcel selected";
+      hideParcelDetails();
+      setActiveResults("No selection", [], []);
+      document.getElementById("resultsLabel").textContent = "No results yet — search, filter, or select parcels on the map.";
+      return;
+    }
+
+    if (count === 1) {
+      const only = Array.from(selectedFeaturesByOid.values())[0];
+      selectedParcelGraphic = only;
+      document.getElementById("selectedParcelLabel").textContent =
+        "Selected: " + textOrDash(only.attributes[FIELD_LOC]);
+      switchLeftTab("results");
+      showParcelDetails(only);
+      return;
+    }
+
+    // Multiple parcels selected (Shift/Ctrl-click) — Find Abutters needs exactly one,
+    // so it's disabled in this state; the details panel shows one parcel at a time so it
+    // doesn't apply to a multi-selection either.
+    selectedParcelGraphic = null;
+    document.getElementById("selectedParcelLabel").textContent = count + " parcels selected";
+    hideParcelDetails();
+
+    const features = Array.from(selectedFeaturesByOid.values());
+    document.getElementById("resultsLabel").textContent = "Loading owner names for " + count + " parcels…";
+
+    const objectIds = features.map(function (f) { return f.attributes.OBJECTID; });
+    parcelLayer.queryRelatedFeatures({
+      objectIds: objectIds,
+      relationshipId: CAMA_RELATIONSHIP_ID,
+      outFields: RESULTS_CAMA_FIELDS
+    }).then(function (relatedResult) {
+      const rows = features.map(function (feature) {
+        const bucket = relatedResult[feature.attributes.OBJECTID];
+        const camaAttrs = (bucket && bucket.features && bucket.features[0]) ? bucket.features[0].attributes : {};
+        return buildResultsRow(feature, camaAttrs);
+      });
+      setActiveResults("Multi-select", rows, features);
+    }).catch(function (err) {
+      console.error(err);
+      document.getElementById("resultsLabel").textContent = count + " parcels selected, but owner names failed to load.";
+    });
+  }
+
+  view.on("click", function (event) {
+    view.hitTest(event).then(function (response) {
+      const hit = response.results.find(function (r) {
+        return r.graphic && r.graphic.layer === parcelLayer;
+      });
+
+      const isModifierClick = event.native
+        && (event.native.shiftKey || event.native.ctrlKey || event.native.metaKey);
+
+      if (!hit) {
+        // Clicked empty space (or a non-parcel layer, e.g. a wetlands overlay). A plain
+        // click clears any selection; a modifier-click on empty space leaves an existing
+        // multi-selection untouched.
+        if (!isModifierClick && selectedFeaturesByOid.size > 0) {
+          clearAllSelections();
+          refreshSelectionUI();
+        }
+        return;
+      }
+
+      const oid = hit.graphic.attributes.OBJECTID;
+
+      if (isModifierClick) {
+        // Shift/Ctrl-click toggles this parcel in or out of the current multi-selection,
+        // leaving every other currently-selected parcel untouched.
+        if (selectedFeaturesByOid.has(oid)) {
+          removeSelection(oid);
+        } else {
+          addSelection(oid, hit.graphic);
+        }
+        refreshSelectionUI();
+        return;
+      }
+
+      // Plain click: normal single-select, or clear if clicking the one already-selected parcel.
+      const wasOnlySelection = selectedFeaturesByOid.size === 1 && selectedFeaturesByOid.has(oid);
+      clearAllSelections();
+
+      if (!wasOnlySelection) {
+        addSelection(oid, hit.graphic);
+      }
+      refreshSelectionUI();
+    });
+  });
+
+  // ---- Find abutters ----
+  document.getElementById("findAbuttersBtn").addEventListener("click", function () {
+    if (!selectedParcelGraphic) {
+      alert("Select exactly one parcel on the map first (Find Abutters doesn't work with a multi-selection).");
+      return;
+    }
+    const dist = parseFloat(document.getElementById("bufferDist").value) || 0;
+    const unit = document.getElementById("bufferUnit").value;
+
+    gfxLayer.graphics.forEach(function (g) {
+      if (g !== selectedParcelGraphic) gfxLayer.remove(g);
+    });
+
+    const buffered = geometryEngine.geodesicBuffer(selectedParcelGraphic.geometry, dist, unit);
+    bufferGraphic = new Graphic({ geometry: buffered, symbol: bufferSymbol });
+    gfxLayer.add(bufferGraphic);
+
+    parcelLayer.queryFeatures({
+      geometry: buffered,
+      spatialRelationship: "intersects",
+      outFields: ["*"],
+      returnGeometry: true
+    }).then(function (result) {
+      const selectedLink = selectedParcelGraphic.attributes
+        ? selectedParcelGraphic.attributes[FIELD_LINK] : null;
+
+      const abutters = result.features.filter(function (f) {
+        return !(selectedLink && f.attributes[FIELD_LINK] === selectedLink);
+      });
+
+      abutters.forEach(function (feature) {
+        const g = feature.clone();
+        g.symbol = abutterSymbol;
+        gfxLayer.add(g);
+      });
+
+      setActiveResults("Abutting parcels (" + dist + " " + unit + ")", [], []);
+      document.getElementById("resultsLabel").textContent = "Loading owner names for " + abutters.length + " abutting parcels…";
+
+      if (abutters.length === 0) return;
+
+      const objectIds = abutters.map(function (f) { return f.attributes.OBJECTID; });
+      parcelLayer.queryRelatedFeatures({
+        objectIds: objectIds,
+        relationshipId: CAMA_RELATIONSHIP_ID,
+        outFields: RESULTS_CAMA_FIELDS
+      }).then(function (relatedResult) {
+        const rows = abutters.map(function (feature) {
+          const bucket = relatedResult[feature.attributes.OBJECTID];
+          const camaAttrs = (bucket && bucket.features && bucket.features[0]) ? bucket.features[0].attributes : {};
+          return buildResultsRow(feature, camaAttrs);
+        });
+        setActiveResults("Abutting parcels (" + dist + " " + unit + ")", rows, abutters);
+      }).catch(function (err) {
+        console.error(err);
+        document.getElementById("resultsLabel").textContent = abutters.length + " abutting parcels found, but owner names failed to load.";
+      });
+    }).catch(function (err) {
+      console.error(err);
+      alert("Query failed. Check the layer URL and field names in the script.");
+    });
+  });
+
+  // ---- Lasso select ----
+  sketchVM.on("create", function (event) {
+    if (event.state !== "complete") return;
+
+    const sketchGeometry = event.graphic.geometry;
+    lassoGfxLayer.remove(event.graphic);
+    setSelectMode("select");
+
+    setActiveResults("Lasso selection", [], []);
+    document.getElementById("resultsLabel").textContent = "Selecting parcels…";
+
+    parcelLayer.queryFeatures({
+      geometry: sketchGeometry,
+      spatialRelationship: "intersects",
+      outFields: ["*"],
+      returnGeometry: true
+    }).then(function (result) {
+      const selected = result.features;
+      selected.forEach(function (feature) {
+        const g = feature.clone();
+        g.symbol = lassoSymbol;
+        lassoGfxLayer.add(g);
+      });
+
+      document.getElementById("resultsLabel").textContent = "Loading owner names for " + selected.length + " parcels…";
+
+      if (selected.length === 0) {
+        setActiveResults("Lasso selection", [], []);
+        return;
+      }
+
+      const objectIds = selected.map(function (f) { return f.attributes.OBJECTID; });
+      parcelLayer.queryRelatedFeatures({
+        objectIds: objectIds,
+        relationshipId: CAMA_RELATIONSHIP_ID,
+        outFields: RESULTS_CAMA_FIELDS
+      }).then(function (relatedResult) {
+        const rows = selected.map(function (feature) {
+          const bucket = relatedResult[feature.attributes.OBJECTID];
+          const camaAttrs = (bucket && bucket.features && bucket.features[0]) ? bucket.features[0].attributes : {};
+          return buildResultsRow(feature, camaAttrs);
+        });
+        setActiveResults("Lasso selection", rows, selected);
+      }).catch(function (err) {
+        console.error(err);
+        document.getElementById("resultsLabel").textContent = selected.length + " parcels selected, but owner names failed to load.";
+      });
+    }).catch(function (err) {
+      console.error(err);
+      document.getElementById("resultsLabel").textContent = "Selection query failed.";
+    });
+  });
+
+  // ---- Search ----
+  document.getElementById("searchType").addEventListener("change", function () {
+    const isOwner = this.value === "owner";
+    document.getElementById("searchInput").placeholder = isOwner
+      ? "e.g. Smith"
+      : "e.g. 12-34-56 OR MAIN ST";
+  });
+
+  // Parcel ID / address data is stored in all caps, and the underlying query is
+  // case-sensitive, so force the input to all caps as the person types (preserving
+  // cursor position) whenever that search mode is active.
+  document.getElementById("searchInput").addEventListener("input", function () {
+    if (document.getElementById("searchType").value === "parcel") {
+      const start = this.selectionStart;
+      const end = this.selectionEnd;
+      this.value = this.value.toUpperCase();
+      this.setSelectionRange(start, end);
+    }
+  });
+
+  document.getElementById("searchBtn").addEventListener("click", function () {
+    const type = document.getElementById("searchType").value;
+    const rawVal = document.getElementById("searchInput").value.trim();
+    const val = type === "parcel" ? rawVal.toUpperCase() : rawVal;
+    const statusEl = document.getElementById("searchStatus");
+    if (!val) return;
+    statusEl.textContent = "Searching…";
+
+    const escaped = val.replace(/'/g, "''");
+
+    if (type === "parcel") {
+      parcelLayer.queryFeatures({
+        where: FIELD_PID + " = '" + escaped + "' OR " +
+               FIELD_LOC + " LIKE '%" + escaped + "%'",
+        outFields: ["*"],
+        returnGeometry: true
+      }).then(function (result) {
+        if (result.features.length === 0) {
+          statusEl.textContent = "No parcel found for \"" + val + "\".";
+          setActiveResults("Search: \"" + val + "\"", [], []);
+          return;
+        }
+        statusEl.textContent = result.features.length + " match(es) found.";
+        const rows = result.features.map(function (f) { return buildResultsRow(f, {}); });
+        setActiveResults("Search: \"" + val + "\"", rows, result.features);
+        view.goTo({ target: result.features[0].geometry, scale: 3000 });
+      }).catch(function (err) {
+        console.error(err);
+        statusEl.textContent = "Search failed — check field names in the script.";
+      });
+      return;
+    }
+
+    camaTable.queryFeatures({
+      where: CAMA_OWNER + " LIKE '%" + escaped + "%'",
+      outFields: [CAMA_JOIN_FIELD].concat(RESULTS_CAMA_FIELDS),
+      returnGeometry: false,
+      num: 200
+    }).then(function (camaResult) {
+      if (camaResult.features.length === 0) {
+        statusEl.textContent = "No owner matching \"" + val + "\".";
+        setActiveResults("Search: \"" + val + "\"", [], []);
+        return;
+      }
+      const camaByLink = {};
+      camaResult.features.forEach(function (f) {
+        camaByLink[f.attributes[CAMA_JOIN_FIELD]] = f.attributes;
+      });
+      const uniqueLinks = Object.keys(camaByLink);
+      const quoted = uniqueLinks.map(function (v) { return "'" + String(v).replace(/'/g, "''") + "'"; });
+
+      parcelLayer.queryFeatures({
+        where: FIELD_LINK + " IN (" + quoted.join(",") + ")",
+        outFields: ["*"],
+        returnGeometry: true
+      }).then(function (parcelResult) {
+        statusEl.textContent = parcelResult.features.length + " match(es) found.";
+        const rows = parcelResult.features.map(function (f) {
+          return buildResultsRow(f, camaByLink[f.attributes[FIELD_LINK]]);
+        });
+        setActiveResults("Search: \"" + val + "\"", rows, parcelResult.features);
+        if (parcelResult.features.length > 0) {
+          view.goTo({ target: parcelResult.features[0].geometry, scale: 3000 });
+        }
+      }).catch(function (err) {
+        console.error(err);
+        statusEl.textContent = "Parcel lookup failed after owner match.";
+      });
+    }).catch(function (err) {
+      console.error(err);
+      statusEl.textContent = "Owner search failed — check field names in the script.";
+    });
+  });
+
+  // ---- Measurement tools ----
+  let activeMeasurement = null;
+
+  function clearMeasurement() {
+    if (activeMeasurement) {
+      view.ui.remove(activeMeasurement);
+      activeMeasurement.destroy();
+      activeMeasurement = null;
+    }
+  }
+
+  document.getElementById("measureDistanceBtn").addEventListener("click", function () {
+    clearMeasurement();
+    activeMeasurement = new DistanceMeasurement2D({ view: view });
+    view.ui.add(activeMeasurement, { position: "manual" });
+    activeMeasurement.container.style.position = "absolute";
+    activeMeasurement.container.style.top = "64px";
+    activeMeasurement.container.style.left = "50%";
+    activeMeasurement.container.style.transform = "translateX(-50%)";
+  });
+
+  document.getElementById("measureAreaBtn").addEventListener("click", function () {
+    clearMeasurement();
+    activeMeasurement = new AreaMeasurement2D({ view: view });
+    view.ui.add(activeMeasurement, { position: "manual" });
+    activeMeasurement.container.style.position = "absolute";
+    activeMeasurement.container.style.top = "64px";
+    activeMeasurement.container.style.left = "50%";
+    activeMeasurement.container.style.transform = "translateX(-50%)";
+  });
+
+  document.getElementById("clearMeasureBtn").addEventListener("click", clearMeasurement);
+
+  // ---- Print / export ----
+  // Two separate timing issues can make a screenshot come out blank:
+  // 1) view.stationary alone only means the camera isn't moving — layers can still be
+  //    fetching/drawing. We also wait for view.updating to go false.
+  // 2) Even with good pixel data, calling window.print() immediately after setting the
+  //    <img> src can fire before the browser has decoded/painted the image, printing a
+  //    blank box. We wait for the image's load event before printing.
+  function waitUntilViewReady() {
+    if (view.stationary && !view.updating) {
+      return Promise.resolve();
+    }
+    return reactiveUtils.whenOnce(function () { return view.stationary && !view.updating; });
+  }
+
+  document.getElementById("printBtn").addEventListener("click", function () {
+    const statusEl = document.getElementById("printStatus");
+    statusEl.textContent = "Capturing map…";
+
+    waitUntilViewReady().then(function () {
+      return view.takeScreenshot({ width: 1400, height: 900 });
+    }).then(function (screenshot) {
+      document.getElementById("printSheetTitle").textContent =
+        document.getElementById("printTitle").value || "Parcel Map";
+      document.getElementById("printSheetDate").textContent = new Date().toLocaleDateString();
+
+      const pid = selectedParcelGraphic && selectedParcelGraphic.attributes
+        ? selectedParcelGraphic.attributes[FIELD_PID] : null;
+      document.getElementById("printSheetSelection").textContent =
+        pid ? "Selected parcel: " + pid : "";
+
+      // List currently visible layers so the printed sheet is self-documenting
+      const visibleTitles = map.layers.filter(function (l) { return l.visible; }).map(function (l) { return l.title; }).toArray();
+      document.getElementById("printSheetLayers").textContent =
+        "Layers shown: " + (visibleTitles.length ? visibleTitles.join(", ") : "Parcels");
+
+      const imgEl = document.getElementById("printSheetImage");
+      statusEl.textContent = "Rendering image…";
+
+      imgEl.onload = function () {
+        statusEl.textContent = "Opening print dialog…";
+        window.print();
+        statusEl.textContent = "";
+      };
+      imgEl.onerror = function () {
+        statusEl.textContent = "Export failed — screenshot image could not be loaded.";
+      };
+      imgEl.src = screenshot.dataUrl;
+    }).catch(function (err) {
+      console.error(err);
+      statusEl.textContent = "Export failed.";
+    });
+  });
+
+});
+</script>
+
+</body>
+</html>
