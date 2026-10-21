@@ -573,6 +573,54 @@
   #leftPanel, #rightPanel { border-top: 4px solid var(--green); }
   .panel-header-text h1, .splash-card h1 { color: var(--navy); }
   .splash-card { border-top: 5px solid var(--green); }
+
+  /* ---- Mobile layout: panels become bottom sheets opened from a bottom nav bar ---- */
+  #mobileNav, .m-sheet-close { display: none; }
+  @media (max-width: 700px) {
+    #mapCell { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+    #leftPanel, #rightPanel, #mapToolbar {
+      display: none;
+      position: fixed !important;
+      left: 0 !important; right: 0 !important; top: auto !important;
+      bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+      width: auto !important;
+      max-height: 65vh; max-height: 65dvh;
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -6px 24px rgba(0,0,0,0.25);
+      z-index: 1100;
+    }
+    #leftPanel.m-open, #rightPanel.m-open { display: flex; }
+    #mapToolbar.m-open { display: block; overflow-y: auto; padding: 14px 16px 16px; border-top: 4px solid var(--green); }
+    .panel-toggle-btn { display: none !important; }
+    .m-sheet-close {
+      display: block; position: absolute; top: 10px; right: 12px; z-index: 2;
+      width: auto; min-height: 0; margin: 0; padding: 5px 11px;
+      background: #fff; color: var(--ink-soft); border: 1px solid var(--line); font-size: 14px;
+    }
+    .m-sheet-close:hover { background: var(--accent-soft); }
+    .panel-header-bar { padding: 14px 60px 10px 16px; }
+    .panel-header-text p { display: none; }
+    #mapToolbar .map-toolbar-header { padding-right: 52px; min-height: 30px; }
+    .tool-section { padding: 12px 16px; }
+    input[type="text"], input[type="number"], select { font-size: 16px; }
+    button { min-height: 40px; }
+    .tab-bar button { min-height: 44px; }
+    #mobileNav {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1200;
+      height: calc(60px + env(safe-area-inset-bottom, 0px));
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: var(--navy); border-top: 3px solid var(--green);
+    }
+    #mobileNav button {
+      flex: 1; margin: 0; border-radius: 0; min-height: 0; background: transparent; color: #fff;
+      font-size: 12px; font-weight: 600; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+    }
+    #mobileNav button.active { background: var(--accent); }
+    #mobileNav svg { width: 20px; height: 20px; }
+    .splash-card { padding: 22px 18px; }
+    .splash-disclaimer { max-height: 45vh; max-height: 45dvh; }
+  }
 </style>
 </head>
 <body>
@@ -1113,6 +1161,7 @@ require([
     document.getElementById("leftPanel").classList.toggle("collapsed", collapsed);
     document.getElementById("leftPanelToggle").textContent = collapsed ? "▶" : "◀";
     repositionMapToolbar();
+    if (!collapsed && window.secogMobileOpen) window.secogMobileOpen("left"); // phones: show results sheet
   }
 
   function setRightPanelCollapsed(collapsed) {
@@ -2198,5 +2247,63 @@ require([
 });
 </script>
 
+
+<!-- Mobile bottom navigation (shown only on small screens) -->
+<nav id="mobileNav" aria-label="Map panels">
+  <button type="button" data-sheet="left" aria-controls="leftPanel" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Parcels
+  </button>
+  <button type="button" data-sheet="search" aria-controls="mapToolbar" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>Search
+  </button>
+  <button type="button" data-sheet="right" aria-controls="rightPanel" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Tools
+  </button>
+</nav>
+<script>
+(function () {
+  var mq = window.matchMedia("(max-width: 700px)");
+  var sheets = { left: "leftPanel", search: "mapToolbar", right: "rightPanel" };
+  var nav = document.getElementById("mobileNav");
+  function btn(k) { return nav.querySelector('[data-sheet="' + k + '"]'); }
+  function closeAll() {
+    Object.keys(sheets).forEach(function (k) {
+      document.getElementById(sheets[k]).classList.remove("m-open");
+      btn(k).classList.remove("active");
+      btn(k).setAttribute("aria-expanded", "false");
+    });
+  }
+  function open(k) {
+    if (!mq.matches) return;
+    closeAll();
+    var el = document.getElementById(sheets[k]);
+    el.classList.remove("collapsed");
+    el.classList.add("m-open");
+    btn(k).classList.add("active");
+    btn(k).setAttribute("aria-expanded", "true");
+  }
+  window.secogMobileOpen = open;
+  Object.keys(sheets).forEach(function (k) {
+    btn(k).addEventListener("click", function () {
+      if (document.getElementById(sheets[k]).classList.contains("m-open")) closeAll(); else open(k);
+    });
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "m-sheet-close";
+    close.setAttribute("aria-label", "Close panel");
+    close.textContent = "\u2715";
+    close.addEventListener("click", closeAll);
+    var el = document.getElementById(sheets[k]);
+    el.insertBefore(close, el.firstChild);
+  });
+  // Tools that need the map: get the sheet out of the way.
+  ["selectModeBtn", "lassoModeBtn", "measureDistanceBtn", "measureAreaBtn"].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.addEventListener("click", function () { if (mq.matches) closeAll(); });
+  });
+  var onChange = function () { if (!mq.matches) closeAll(); };
+  if (mq.addEventListener) mq.addEventListener("change", onChange); else mq.addListener(onChange);
+})();
+</script>
 </body>
 </html>
